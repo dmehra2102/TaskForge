@@ -3,3 +3,183 @@ syntax = "proto3";
 package todo.v1;
 
 option go_package = "github.com/dmehra2102/TaskForge/api/proto/v1;todov1";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/field_mask.proto";
+import "api/proto/v1/common.proto";
+
+// TodoStatus represents the lifecycle state of a todo
+enum TodoStatus {
+    TODO_STATUS_UNSPECIFIED = 0;
+    TODO_STATUS_PENDING = 1;
+    TODO_STATUS_IN_PROGRESS = 2;
+    TODO_STATUS_COMPLETED = 3;
+    TODO_STATUS_ARCHIVED = 4;
+}
+
+// TodoPriority represents urgency level
+enum TodoPriority {
+    TODO_PRIORITY_UNSPECIFIED = 0;
+    TODO_PRIORITY_LOW = 1;
+    TODO_PRIORITY_MEDIUM = 2;
+    TODO_PRIORITY_HIGH = 3;
+    TODO_PRIORITY_CRITICAL = 4;
+}
+
+// Todo represent a task item
+message Todo {
+    string id = 1;
+    string title = 2;
+    string description = 3;
+    TodoStatus status = 4;
+    TodoPriority priority = 5;
+    google.protobuf.Timestamp due_date = 6;
+    
+    // Tags for categorization
+    repeated string tags = 7;
+
+    string owner_id = 8;
+    string assigned_to = 9;
+    string tenant_id = 10;
+
+    google.protobuf.Timestamp created_at = 11;
+    google.protobuf.Timestamp updated_at = 12;
+    int64 version = 13; // Optimistic locking version
+}
+
+// CreateTodoRequest creates a new todo
+message CreateTodoRequest {
+    RequestMetadata metadata = 1;
+    
+    string title = 2;
+    string description = 3;
+    TodoPriority priority = 4;
+    google.protobuf.Timestamp due_date = 5;
+    repeated string tags = 6;
+    string assigned_to = 7;
+}
+
+message CreateTodoResponse {
+    Todo todo = 1;
+}
+
+message GetTodoRequest {
+    RequestMetadata metadata = 1;
+    string id = 2;
+}
+
+message GetTodoResponse {
+    Todo todo = 1;
+}
+
+message UpdateTodoRequest {
+    RequestMetadata metadata = 1;
+    
+    string id = 2;
+    
+    // Fields to update (following Google API design)
+    google.protobuf.FieldMask update_mask = 3;
+    
+    Todo todo = 4;
+    
+    // Version for optimistic locking
+    int64 version = 5;
+}
+
+message UpdateTodoResponse {
+    Todo todo = 1;
+}
+
+// DeleteTodoRequest soft-deletes a todo
+message DeleteTodoRequest {
+    RequestMetadata metadata = 1;
+    string id = 2;
+}
+
+message DeleteTodoResponse {
+    bool success = 1;
+}
+
+// ListTodosRequest with filtering, sorting, and pagination
+message ListTodosRequest {
+    RequestMetadata metadata = 1;
+    
+    // Pagination
+    int32 page = 2;
+    int32 page_size = 3;
+    
+    // Filtering
+    repeated TodoStatus status_filter = 4;
+    repeated TodoPriority priority_filter = 5;
+    repeated string tags_filter = 6;
+    string assigned_to_filter = 7;
+    
+    // Date range filtering
+    google.protobuf.Timestamp due_date_from = 8;
+    google.protobuf.Timestamp due_date_to = 9;
+    
+    // Sorting
+    string sort_by = 10; // e.g., "created_at", "due_date", "priority"
+    SortOrder sort_order = 11;
+    
+    // Search query (full-text search on title/description)
+    string search_query = 12;
+}
+
+message ListTodosResponse {
+    repeated Todo todos = 1;
+    PageInfo page_info = 2;
+}
+
+// UpdateTodoStatusRequest handles state transitions
+message UpdateTodoStatusRequest {
+    RequestMetadata metadata = 1;
+    
+    string id = 2;
+    TodoStatus new_status = 3;
+    
+    // Optional reason for status change (audit trail)
+    string reason = 4;
+    
+    // Version for optimistic locking
+    int64 version = 5;
+}
+
+message UpdateTodoStatusResponse {
+    Todo todo = 1;
+}
+
+// BatchCreateTodosRequest for bulk operations
+message BatchCreateTodosRequest {
+    RequestMetadata metadata = 1;
+    repeated CreateTodoRequest requests = 2;
+}
+
+message BatchCreateTodosResponse {
+    repeated Todo todos = 1;
+    repeated ErrorDetail errors = 2;
+}
+
+// TodoService provides todo management operations
+service TodoService {
+    // Create a new todo
+    rpc CreateTodo(CreateTodoRequest) returns (CreateTodoResponse);
+
+    // Get a todo by ID
+    rpc GetTodo(GetTodoRequest) returns (GetTodoResponse);
+
+    // Update an existing todo
+    rpc UpdateTodo(UpdateTodoRequest) returns (UpdateTodoResponse);
+
+    // Delete a todo (soft delete)
+    rpc DeleteTodo(DeleteTodoRequest) returns (DeleteTodoResponse);
+
+    // List todos with filtering and pagination
+    rpc ListTodos(ListTodosRequest) returns (ListTodosResponse);
+
+    // Update todo status (enforces state machine)
+    rpc UpdateTodoStatus(UpdateTodoStatusRequest) returns (UpdateTodoStatusResponse);
+
+    // Batch create todos
+    rpc BatchCreateTodos(BatchCreateTodosRequest) returns (BatchCreateTodosResponse);
+}
