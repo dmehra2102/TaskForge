@@ -1,0 +1,5 @@
+syntax = "proto3";
+
+package todo.v1;
+
+option go_package = "github.com/dmehra2102/TaskForge/api/proto/v1;todov1";
