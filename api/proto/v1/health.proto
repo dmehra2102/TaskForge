@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package todo.v1;
+
+option go_package = "github.com/dmehra2102/TaskForge/api/proto/v1;todov1";
+
+import "google/protobuf/timestamp.proto";
+
+// HealthStatus represents service health
+enum HealthStatus {
+    HEALTH_STATUS_UNSPECIFIED = 0;
+    HEALTH_STATUS_HEALTHY = 1;
+    HEALTH_STATUS_DEGRADED = 2;
+    HEALTH_STATUS_UNHEALTHY = 3;
+}
+
+// ComponentHealth represents individual component status
+message ComponentHealth {
+    string name = 1;
+    HealthStatus status = 2;
+    string message = 3;
+    google.protobuf.Timestamp last_check = 4;
+}
+
+message HealthCheckRequest {}
+
+message HealthCheckResponse {
+    HealthStatus status = 1;
+    repeated ComponentHealth components = 2;
+    google.protobuf.Timestamp timestamp = 3;
+    string version = 4;
+}
+
+message ReadinessCheckRequest {}
+
+message ReadinessCheckResponse {
+    bool ready = 1;
+    string message = 2;
+}
+
+// HealthService provide services health check Operations
+service HealthService {
+    // Check health status of services
+    rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+
+    // Check service readiness
+    rpc ReadinessCheck(ReadinessCheckRequest) returns (ReadinessCheckResponse);
+}
