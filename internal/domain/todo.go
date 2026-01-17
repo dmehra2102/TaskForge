@@ -37,6 +37,7 @@ type Todo struct {
 	TenantID    string
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+	DeletedAt   *time.Time
 	Version     int64
 }
 
