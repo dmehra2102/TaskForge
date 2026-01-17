@@ -193,3 +193,33 @@ func validateTitle(title string) error {
 func isValidPriority(p TodoPriority) bool {
 	return p >= PriorityLow && p <= PriorityCritical
 }
+
+type ListFilter struct {
+	TenantID      string
+	OwnerID       *string
+	AssignedTo    *string
+	Statuses      []TodoStatus
+	Priorities    []TodoPriority
+	Tags          []string
+	DueDateFrom   *time.Time
+	DueDateTo     *time.Time
+	SearchQuery   *string
+	Page          int
+	PageSize      int
+	SortBy        string
+	SortAscending bool
+}
+
+// Validates the filter
+func (f *ListFilter) Validate() error {
+	if f.TenantID == "" {
+		return ErrInvalidTenantID
+	}
+	if f.Page < 1 {
+		f.Page = 1
+	}
+	if f.PageSize < 1 || f.PageSize > 100 {
+		f.PageSize = 20
+	}
+	return nil
+}
