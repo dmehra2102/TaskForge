@@ -111,6 +111,46 @@ func (s *TodoServiceServer) CreateTodo(ctx context.Context, req *todov1.CreateTo
 	}, nil
 }
 
+func (s *TodoServiceServer) GetTodo(ctx context.Context, req *todov1.GetTodoRequest) (*todov1.GetTodoResponse, error) {
+	ctx, span := s.tracer.Start(ctx, "GetTodo")
+	defer span.End()
+
+	userCtx,err := auth.UserContextFromContext(ctx)
+	if err != nil {
+		return nil, status.Error(codes.Unauthenticated, "authentication required")
+	}
+	
+	span.SetAttributes(
+		attribute.String("todo.id", req.Id),
+		attribute.String("tenant.id", userCtx.TenantID),
+	)
+
+	if req.Id == "" {
+		return nil, status.Error(codes.InvalidArgument, "todo ID is required")
+	}
+
+	todo,err := s.repo.GetByID(ctx, req.Id, userCtx.TenantID)
+	if err != nil {
+		if err == domain.ErrTodoNotFound {
+			return nil, status.Error(codes.NotFound, "todo not found")
+		}
+		s.logger.Error("failed to get todo",
+			zap.Error(err),
+			zap.String("todo_id", req.Id),
+		)
+		return nil, status.Error(codes.Internal, "failed to retrieve todo")
+	}
+
+	// Check authorization
+	if !s.authz.CanRead(userCtx, todo) {
+		return nil, status.Error(codes.PermissionDenied, "insufficient permissions")
+	}
+	
+	return &todov1.GetTodoResponse{
+		Todo: mapDomainToProto(todo),
+	}, nil
+}
+
 func validateCreateRequest(req *todov1.CreateTodoRequest) error {
 	if req.Title == "" {
 		return fmt.Errorf("title is required")
