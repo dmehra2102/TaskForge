@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"math"
 
 	todov1 "github.com/dmehra2102/TaskForge/api/proto/v1"
 	"github.com/dmehra2102/TaskForge/internal/domain"
@@ -234,6 +235,99 @@ func (s *TodoServiceServer) DeleteTodo(ctx context.Context, req *todov1.DeleteTo
 
 	return &todov1.DeleteTodoResponse{
 		Success: true,
+	}, nil
+}
+
+func (s *TodoServiceServer) ListTodos(ctx context.Context, req *todov1.ListTodosRequest) (*todov1.ListTodosResponse, error) {
+	ctx, span := s.tracer.Start(ctx, "ListTodos")
+	defer span.End()
+
+	userCtx, err := auth.UserContextFromContext(ctx)
+	if err != nil {
+		return nil, status.Error(codes.Unauthenticated, "authentication required")
+	}
+
+	filter := &domain.ListFilter{
+		TenantID:      userCtx.TenantID,
+		Page:          int(req.Page),
+		PageSize:      int(req.PageSize),
+		SortBy:        req.SortBy,
+		SortAscending: req.SortOrder == todov1.SortOrder_SORT_ORDER_ASC,
+	}
+
+	if !s.authz.CanReadAll(userCtx) {
+		filter.OwnerID = &userCtx.UserID
+	}
+
+	if len(req.StatusFilter) > 0 {
+		filter.Statuses = make([]domain.TodoStatus, len(req.StatusFilter))
+		for i, s := range req.StatusFilter {
+			filter.Statuses[i] = mapProtoStatus(s)
+		}
+	}
+
+	if len(req.PriorityFilter) > 0 {
+		filter.Priorities = make([]domain.TodoPriority, len(req.PriorityFilter))
+		for i, p := range req.PriorityFilter {
+			filter.Priorities[i] = mapProtoPriority(p)
+		}
+	}
+
+	if len(req.TagsFilter) > 0 {
+		filter.Tags = req.TagsFilter
+	}
+
+	if req.AssignedToFilter != "" {
+		filter.AssignedTo = &req.AssignedToFilter
+	}
+
+	if req.DueDateFrom != nil {
+		from := req.DueDateFrom.AsTime()
+		filter.DueDateFrom = &from
+	}
+
+	if req.DueDateTo != nil {
+		to := req.DueDateTo.AsTime()
+		filter.DueDateTo = &to
+	}
+
+	if req.SearchQuery != "" {
+		filter.SearchQuery = &req.SearchQuery
+	}
+
+	if err := filter.Validate(); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
+	todos, totalCount, err := s.repo.List(ctx, filter)
+	if err != nil {
+		s.logger.Error("failed to list todos",
+			zap.Error(err),
+			zap.String("tenant_id", userCtx.TenantID),
+		)
+		return nil, status.Error(codes.Internal, "failed to list todos")
+	}
+
+	// Build response
+	protoTodos := make([]*todov1.Todo, len(todos))
+	for i, todo := range todos {
+		protoTodos[i] = mapDomainToProto(todo)
+	}
+
+	totalPages := int32(math.Ceil(float64(totalCount) / float64(filter.PageSize)))
+
+	pageInfo := &todov1.PageInfo{
+		Page:       int32(filter.Page),
+		PageSize:   int32(filter.PageSize),
+		TotalItems: totalCount,
+		TotalPages: totalPages,
+		HasNext:    filter.Page < int(totalPages),
+		HasPrev:    filter.Page > 1,
+	}
+
+	return &todov1.ListTodosResponse{
+		Todos:    protoTodos,
+		PageInfo: pageInfo,
 	}, nil
 }
 
