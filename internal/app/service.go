@@ -331,6 +331,112 @@ func (s *TodoServiceServer) ListTodos(ctx context.Context, req *todov1.ListTodos
 	}, nil
 }
 
+func (s *TodoServiceServer) UpdateTodoStatus(ctx context.Context, req *todov1.UpdateTodoStatusRequest) (*todov1.UpdateTodoStatusResponse, error) {
+	ctx, span := s.tracer.Start(ctx, "UpdateTodoStatus")
+	defer span.End()
+
+	userCtx, err := auth.UserContextFromContext(ctx)
+	if err != nil {
+		return nil, status.Error(codes.Unauthenticated, "authentication required")
+	}
+
+	existing, err := s.repo.GetByID(ctx, req.Id, userCtx.TenantID)
+	if err != nil {
+		if err == domain.ErrTodoNotFound {
+			return nil, status.Error(codes.NotFound, "todo not found")
+		}
+		return nil, status.Error(codes.Internal, "failed to retrieve todo")
+	}
+
+	if !s.authz.CanUpdate(userCtx, existing) {
+		return nil, status.Error(codes.PermissionDenied, "insufficient permissions")
+	}
+
+	newStatus := mapProtoStatus(req.NewStatus)
+	if err := existing.UpdateStatus(newStatus); err != nil {
+		return nil, mapDomainError(err)
+	}
+	updated, err := s.repo.UpdateStatus(ctx, req.Id, userCtx.TenantID, newStatus, req.Version)
+	if err != nil {
+		if err == domain.ErrVersionMismatch {
+			return nil, status.Error(codes.Aborted, "concurrent update detected, please retry")
+		}
+		s.logger.Error("failed to update status",
+			zap.Error(err),
+			zap.String("todo_id", req.Id),
+		)
+		return nil, status.Error(codes.Internal, "failed to update status")
+	}
+
+	s.logger.Info("todo status updated",
+		zap.String("todo_id", req.Id),
+		zap.Int("new_status", int(newStatus)),
+		zap.String("reason", req.Reason),
+	)
+
+	return &todov1.UpdateTodoStatusResponse{
+		Todo: mapDomainToProto(updated),
+	}, nil
+}
+
+func (s *TodoServiceServer) BatchCreateTodos(ctx context.Context, req *todov1.BatchCreateTodosRequest) (*todov1.BatchCreateTodosResponse, error) {
+	ctx, span := s.tracer.Start(ctx, "BatchCreateTodos")
+	defer span.End()
+
+	userCtx, err := auth.UserContextFromContext(ctx)
+	if err != nil {
+		return nil, status.Error(codes.Unauthenticated, "authentication required")
+	}
+
+	if !s.authz.CanCreate(userCtx) {
+		return nil, status.Error(codes.PermissionDenied, "insufficient permissions")
+	}
+
+	todos := make([]*domain.Todo, 0, len(req.Requests))
+	errors := make([]*todov1.ErrorDetail, 0)
+
+	// Create domain entities
+	for i, createReq := range req.Requests {
+		todo, err := domain.NewTodo(
+			createReq.Title,
+			createReq.Description,
+			userCtx.UserID,
+			userCtx.TenantID,
+			mapProtoPriority(createReq.Priority),
+		)
+		if err != nil {
+			errors = append(errors, &todov1.ErrorDetail{
+				Field:     fmt.Sprintf("requests[%d]", i),
+				Message:   err.Error(),
+				ErrorCode: "VALIDATION_ERROR",
+			})
+			continue
+		}
+		todos = append(todos, todo)
+	}
+
+	// Batch create
+	if len(todos) > 0 {
+		if err := s.repo.BatchCreate(ctx, todos); err != nil {
+			s.logger.Error("failed to batch create todos",
+				zap.Error(err),
+				zap.Int("count", len(todos)),
+			)
+			return nil, status.Error(codes.Internal, "failed to create todos")
+		}
+	}
+
+	protoTodos := make([]*todov1.Todo, len(todos))
+	for i, todo := range todos {
+		protoTodos[i] = mapDomainToProto(todo)
+	}
+
+	return &todov1.BatchCreateTodosResponse{
+		Todos:  protoTodos,
+		Errors: errors,
+	}, nil
+}
+
 func validateCreateRequest(req *todov1.CreateTodoRequest) error {
 	if req.Title == "" {
 		return fmt.Errorf("title is required")
