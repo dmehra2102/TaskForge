@@ -46,24 +46,24 @@ type Config struct {
 	ShutdownTimeout time.Duration
 
 	// Feature Flags
-	EnableMetrics       bool
-	EnableTracing       bool
-	EnableHealthCheck   bool
-	EnableReflection    bool
+	EnableMetrics     bool
+	EnableTracing     bool
+	EnableHealthCheck bool
+	EnableReflection  bool
 
 	// AWS Configuration
-	AWSRegion           string
-	SecretsManagerName  string
-	UseSecretsManager   bool
+	AWSRegion          string
+	SecretsManagerName string
+	UseSecretsManager  bool
 
 	// Cache Configuration (for idempotency)
-	CacheEnabled        bool
-	CacheTTL            time.Duration
-	CacheMaxSize        int
+	CacheEnabled bool
+	CacheTTL     time.Duration
+	CacheMaxSize int
 
 	// Timeouts
-	RequestTimeout      time.Duration
-	DatabaseTimeout     time.Duration
+	RequestTimeout  time.Duration
+	DatabaseTimeout time.Duration
 }
 
 func Load() (*Config, error) {
@@ -131,7 +131,7 @@ func Load() (*Config, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("config validation failed: %w", err)
 	}
-	
+
 	return cfg, nil
 }
 
@@ -169,7 +169,7 @@ func (c *Config) Validate() error {
 
 	// Connection pool validation
 	if c.MaxOpenConns < c.MaxIdleConns {
-		return fmt.Errorf("max_open_conns (%d) must be >= max_idle_conns (%d)", 
+		return fmt.Errorf("max_open_conns (%d) must be >= max_idle_conns (%d)",
 			c.MaxOpenConns, c.MaxIdleConns)
 	}
 
@@ -212,7 +212,7 @@ func getEnvAsInt(key string, defaultValue int) int {
 	if valueStr == "" {
 		return defaultValue
 	}
-	
+
 	value, err := strconv.Atoi(valueStr)
 	if err != nil {
 		return defaultValue
@@ -225,7 +225,7 @@ func getEnvAsBool(key string, defaultValue bool) bool {
 	if valueStr == "" {
 		return defaultValue
 	}
-	
+
 	value, err := strconv.ParseBool(valueStr)
 	if err != nil {
 		return defaultValue
@@ -238,7 +238,7 @@ func getEnvAsDuration(key string, defaultValue time.Duration) time.Duration {
 	if valueStr == "" {
 		return defaultValue
 	}
-	
+
 	value, err := time.ParseDuration(valueStr)
 	if err != nil {
 		return defaultValue
